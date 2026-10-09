@@ -1,10 +1,18 @@
 import { WordResult, SentenceResult, SynonymItem, AntonymItem, ExampleSentence, CEFRLevel, CompoundBreakdown } from './types';
 import { A1_WORDS } from './dictionary/a1Words';
+import { A1_EXPANDED } from './dictionary/a1Expanded';
 import { A2_WORDS } from './dictionary/a2Words';
+import { A2_EXPANDED } from './dictionary/a2Expanded';
 import { B1_WORDS } from './dictionary/b1Words';
+import { B1_EXPANDED } from './dictionary/b1Expanded';
 import { B2_WORDS } from './dictionary/b2Words';
+import { B2_EXPANDED } from './dictionary/b2Expanded';
 import { C1_WORDS } from './dictionary/c1Words';
+import { C1_EXPANDED } from './dictionary/c1Expanded';
 import { C2_WORDS } from './dictionary/c2Words';
+import { C2_EXPANDED } from './dictionary/c2Expanded';
+import { IDIOMS_EXPANDED } from './dictionary/idiomsExpanded';
+import { COLLOCATIONS_EXPANDED } from './dictionary/collocationsExpanded';
 import { COMPOUND_WORDS } from './dictionary/compoundWords';
 import { EXTENDED_ID_TO_DE } from './dictionary/idToDeData';
 
@@ -230,11 +238,19 @@ export const UMLAUT_PAIRS: Record<string, UmlautMapping> = {
 
 export const GERMAN_DICTIONARY: Record<string, WordResult> = {
   ...A1_WORDS,
+  ...A1_EXPANDED,
   ...A2_WORDS,
+  ...A2_EXPANDED,
   ...B1_WORDS,
+  ...B1_EXPANDED,
   ...B2_WORDS,
+  ...B2_EXPANDED,
   ...C1_WORDS,
+  ...C1_EXPANDED,
   ...C2_WORDS,
+  ...C2_EXPANDED,
+  ...IDIOMS_EXPANDED,
+  ...COLLOCATIONS_EXPANDED,
   ...COMPOUND_WORDS,
   schön: {
     word: 'schön',
