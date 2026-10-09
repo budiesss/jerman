@@ -205,6 +205,27 @@ export default function DictionaryPage() {
       }
     }
 
+    // 2.5. Check 250,000-word Lexicon database
+    try {
+      const lexRes = await fetch(`/api/dictionary?lookup=${encodeURIComponent(clean)}`);
+      if (lexRes.ok) {
+        const lexData = await lexRes.json();
+        if (lexData.success && lexData.wordResult) {
+          setSelectedWord(lexData.wordResult);
+          setIsLoading(false);
+          saveHistoryItem(trimmed, {
+            input: trimmed,
+            mode: 'de-id',
+            inputType: 'word',
+            wordResult: lexData.wordResult,
+          });
+          return;
+        }
+      }
+    } catch {
+      // Continue to typo check if lookup fails
+    }
+
     // 3. Check local typo correction
     const localTypo = detectGermanTypo(trimmed);
     if (localTypo) {

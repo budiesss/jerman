@@ -1634,6 +1634,11 @@ export function detectGermanTypo(rawInput: string): TypoCorrection | null {
   const lower = trimmed.toLowerCase().replace(/^(der|die|das)\s+/i, '').trim();
   if (!lower || lower.length < 3) return null;
 
+  // ── Guard: If word already exists in GERMAN_DICTIONARY, GERMAN_THESAURUS, or INFLECTED_LOOKUP, it is NEVER a typo! ──
+  if (GERMAN_DICTIONARY[lower] || GERMAN_THESAURUS[lower] || INFLECTED_LOOKUP[lower]) {
+    return null;
+  }
+
   // Helper to build result from a found word
   const buildResult = (targetWord: string, reason: string, confidence: number): TypoCorrection => {
     const targetLower = targetWord.toLowerCase();

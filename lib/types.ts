@@ -42,12 +42,16 @@ export interface NounGrammar {
 }
 
 export interface VerbGrammar {
-  infinitiv: string;
-  praesens: string; // 3. Person (er/sie/es)
+  infinitiv?: string;
+  infinitive?: string;
+  praesens?: string; // 3. Person (er/sie/es)
+  praesens3sg?: string;
   praeteritum: string;
   partizip2: string;
+  perfekt?: string;
   hilfsverb: 'haben' | 'sein' | 'haben / sein';
-  isIrregular: boolean; // Unregelmäßiges Verb
+  isIrregular?: boolean; // Unregelmäßiges Verb
+  regularitaet?: string;
   isSeparable?: boolean; // Trennbares Verb
   prefix?: string;
   reflexiv?: boolean;

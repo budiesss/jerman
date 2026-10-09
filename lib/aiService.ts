@@ -675,8 +675,12 @@ export async function analyzeGermanText(
         aiResponse.inflectionInfo = detectedInflection;
       }
       if (detectedTypo && aiResponse.wordResult && !aiResponse.wordResult.typoCorrection) {
-        aiResponse.wordResult.typoCorrection = detectedTypo;
-        aiResponse.typoCorrection = detectedTypo;
+        const analyzedWord = (aiResponse.wordResult.word || '').toLowerCase();
+        const userInputClean = trimmed.toLowerCase().replace(/^(der|die|das)\s+/i, '').trim();
+        if (analyzedWord !== userInputClean) {
+          aiResponse.wordResult.typoCorrection = detectedTypo;
+          aiResponse.typoCorrection = detectedTypo;
+        }
       }
       return aiResponse;
     }
@@ -890,10 +894,58 @@ async function fallbackLinguisticEngine(
   // 2. Single words
   // German -> Indonesian
   if (mode === 'de-id') {
-    // 2.1. Handle inflected forms (e.g. "Häuser", "ging", "dem Mann", "schönen")
+    const cleanWord = lower.replace(/^(der|die|das|ein|eine|einen|einem|einer|des|dem|den)\s+/i, '').trim();
+
+    // 2.1. Exact curated dictionary match (highest priority, 100% curated accuracy)
+    if (GERMAN_DICTIONARY[cleanWord] || GERMAN_DICTIONARY[lower]) {
+      const match = GERMAN_DICTIONARY[cleanWord] || GERMAN_DICTIONARY[lower];
+      return {
+        input,
+        mode,
+        inputType: 'word',
+        recommendations,
+        wordResult: match,
+      };
+    }
+
+    // 2.2. Exact 250k Lexicon database match (250,000 words vocabulary)
+    const lexiconMatch = largeLexiconService.lookupWord(cleanWord) || largeLexiconService.lookupWord(lower);
+    if (lexiconMatch) {
+      const generated = largeLexiconService.toWordResult(lexiconMatch);
+      return {
+        input,
+        mode,
+        inputType: 'word',
+        recommendations,
+        wordResult: generated,
+      };
+    }
+
+    // 2.3. Check if user typed without umlaut (e.g. schon -> offer recommendation)
+    if (recommendations.length > 0) {
+      const firstOptWord = recommendations[0].word.replace(/^(der|die|das)\s+/i, '').toLowerCase();
+      const matched = GERMAN_DICTIONARY[firstOptWord] || GERMAN_DICTIONARY[cleanWord];
+      if (matched) {
+        return {
+          input,
+          mode,
+          inputType: 'word',
+          recommendations,
+          wordResult: matched,
+        };
+      }
+    }
+
+    // 2.4. Handle inflected forms (e.g. "Häuser", "ging", "dem Mann", "schönen")
     if (detectedInflection) {
       const baseKey = detectedInflection.baseWord.toLowerCase();
       let matchedBase = GERMAN_DICTIONARY[baseKey];
+      if (!matchedBase) {
+        const baseLexicon = largeLexiconService.lookupWord(baseKey);
+        if (baseLexicon) {
+          matchedBase = largeLexiconService.toWordResult(baseLexicon);
+        }
+      }
       if (!matchedBase) {
         const genRes = await generateGermanWordFallback(
           detectedInflection.baseWord,
@@ -922,10 +974,16 @@ async function fallbackLinguisticEngine(
       }
     }
 
-    // 2.2. Handle typo corrections (e.g. "freziet" -> "Freizeit")
+    // 2.5. Handle typo corrections (only if NOT in curated dict AND NOT in 250k lexicon)
     if (detectedTypo) {
       const suggestedKey = detectedTypo.suggestedWord.toLowerCase();
       let matchedSuggestion = GERMAN_DICTIONARY[suggestedKey];
+      if (!matchedSuggestion) {
+        const suggLexicon = largeLexiconService.lookupWord(suggestedKey);
+        if (suggLexicon) {
+          matchedSuggestion = largeLexiconService.toWordResult(suggLexicon);
+        }
+      }
       if (!matchedSuggestion) {
         const genRes = await generateGermanWordFallback(
           detectedTypo.suggestedWord,
@@ -954,51 +1012,7 @@ async function fallbackLinguisticEngine(
       }
     }
 
-    // 2.3. Exact dictionary match
-    const cleanWord = lower.replace(/^(der|die|das|ein|eine|einen|einem|einer|des|dem|den)\s+/i, '').trim();
-    if (GERMAN_DICTIONARY[cleanWord]) {
-      return {
-        input,
-        mode,
-        inputType: 'word',
-        recommendations,
-        wordResult: GERMAN_DICTIONARY[cleanWord],
-      };
-    }
-
-    // 2.4. Check if user typed without umlaut (e.g. schon -> offer recommendation)
-    if (recommendations.length > 0) {
-      const firstOptWord = recommendations[0].word.replace(/^(der|die|das)\s+/i, '').toLowerCase();
-      const matched = GERMAN_DICTIONARY[firstOptWord] || GERMAN_DICTIONARY[cleanWord];
-      if (matched) {
-        return {
-          input,
-          mode,
-          inputType: 'word',
-          recommendations,
-          wordResult: matched,
-        };
-      }
-    }
-
-    // 2.4.b Check 250k Lexicon database
-    const lexiconMatch = largeLexiconService.lookupWord(cleanWord) || largeLexiconService.lookupWord(lower);
-    if (lexiconMatch) {
-      const generated = largeLexiconService.toWordResult(lexiconMatch);
-      return {
-        input,
-        mode,
-        inputType: 'word',
-        recommendations,
-        wordResult: {
-          ...generated,
-          inflectionInfo: detectedInflection || undefined,
-          typoCorrection: detectedTypo || undefined,
-        },
-      };
-    }
-
-    // 2.5. Heuristic + online translation for unknown German word
+    // 2.6. Heuristic + online translation for unknown German word
     return await generateGermanWordFallback(input, recommendations, detectedInflection, detectedTypo);
   } else {
     // Indonesian -> German

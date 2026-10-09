@@ -5,6 +5,7 @@ import { A2_WORDS } from './dictionary/a2Words';
 import { A2_EXPANDED } from './dictionary/a2Expanded';
 import { B1_WORDS } from './dictionary/b1Words';
 import { B1_EXPANDED } from './dictionary/b1Expanded';
+import { B1_CORE_VERBS } from './dictionary/b1CoreVerbs';
 import { B2_WORDS } from './dictionary/b2Words';
 import { B2_EXPANDED } from './dictionary/b2Expanded';
 import { C1_WORDS } from './dictionary/c1Words';
@@ -243,6 +244,7 @@ export const GERMAN_DICTIONARY: Record<string, WordResult> = {
   ...A2_EXPANDED,
   ...B1_WORDS,
   ...B1_EXPANDED,
+  ...B1_CORE_VERBS,
   ...B2_WORDS,
   ...B2_EXPANDED,
   ...C1_WORDS,
