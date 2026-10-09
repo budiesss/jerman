@@ -3145,6 +3145,7 @@ const RAW_THESAURUS: Record<string, {
       { word: 'Fleiß', article: 'der', wordClass: 'Nomen', translation: 'kerajinan ketekunan' },
       { word: 'Eifer', article: 'der', wordClass: 'Nomen', translation: 'kegigihan' },
     ],
+  },
 };
 
 export const GERMAN_THESAURUS: Record<string, {
