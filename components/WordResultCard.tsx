@@ -15,11 +15,15 @@ import TypoAlert from './TypoAlert';
 interface WordResultCardProps {
   result: WordResult;
   onNavigateWord?: (word: string) => void;
+  onEnrichWithAI?: () => void;
+  isEnriching?: boolean;
 }
 
 export default function WordResultCard({
   result,
   onNavigateWord,
+  onEnrichWithAI,
+  isEnriching,
 }: WordResultCardProps) {
   const grammar = result.grammar;
   const isNoun = grammar.type === 'nomen';
@@ -116,6 +120,25 @@ export default function WordResultCard({
               cefrLevel={result.cefrLevel}
               size="md"
             />
+
+            {result.aiProviderUsed && (
+              <span
+                style={{
+                  fontSize: '0.78rem',
+                  padding: '3px 10px',
+                  borderRadius: 'var(--radius-pill)',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  color: '#10b981',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                ✨ {result.aiProviderUsed}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -452,6 +475,53 @@ export default function WordResultCard({
       {/* Synonyms & Antonyms */}
       <SynonymTable synonyms={result.synonyms} onWordClick={onNavigateWord} />
       <AntonymTable antonyms={result.antonyms} onWordClick={onNavigateWord} />
+
+      {/* Multi-AI Contextual Enrichment Action */}
+      {onEnrichWithAI && (
+        <div
+          style={{
+            marginTop: 20,
+            marginBottom: 20,
+            padding: '14px 18px',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--bg-surface-elevated)',
+            border: '1px solid var(--border-subtle)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+          }}
+        >
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: '1.05rem' }}>🤖</span>
+              <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                Perkaya Kosakata dengan Multi-AI
+              </strong>
+            </div>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>
+              Dapatkan contoh kalimat baru yang lebih beragam sesuai konteks serta sinonim dan antonim tambahan dari AI terhubung (Gemini, ChatGPT, Claude, Grok, DeepSeek).
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onEnrichWithAI}
+            disabled={isEnriching}
+            className="btn btn-secondary"
+            style={{
+              fontSize: '0.82rem',
+              padding: '8px 16px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              cursor: isEnriching ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {isEnriching ? '⏳ Menghubungi AI...' : '✨ Perkaya Contoh & Sinonim AI'}
+          </button>
+        </div>
+      )}
 
       {/* Example Sentences */}
       <ExampleSentenceTable examples={result.examples} />

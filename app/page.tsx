@@ -28,6 +28,7 @@ function HomePageInner() {
   const [inputText, setInputText] = useState('');
   const [mode, setMode] = useState<LanguageMode>('de-id');
   const [isLoading, setIsLoading] = useState(false);
+  const [isEnriching, setIsEnriching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
 
@@ -45,21 +46,39 @@ function HomePageInner() {
   }, []);
 
   // Perform search / analysis
-  const executeAnalysis = async (textToAnalyze: string, searchMode: LanguageMode = mode) => {
+  const executeAnalysis = async (
+    textToAnalyze: string,
+    searchMode: LanguageMode = mode,
+    forceEnrich = false
+  ) => {
     const trimmed = textToAnalyze.trim();
     if (!trimmed) return;
 
-    setIsLoading(true);
-    setError(null);
+    if (forceEnrich) {
+      setIsEnriching(true);
+    } else {
+      setIsLoading(true);
+      setError(null);
+    }
 
     try {
-      // Check if user has custom API key in settings
+      // Check multi-AI provider settings
       let customApiKey = '';
+      let provider = 'auto';
+      let providerKeys = {};
       try {
         const storedSettings = JSON.parse(
           localStorage.getItem('deutsch_lernen_settings_v1') || '{}'
         );
         customApiKey = storedSettings.customApiKey || '';
+        provider = storedSettings.aiProvider || 'auto';
+        providerKeys = {
+          gemini: storedSettings.customApiKey,
+          openai: storedSettings.openaiApiKey,
+          claude: storedSettings.claudeApiKey,
+          grok: storedSettings.grokApiKey,
+          deepseek: storedSettings.deepseekApiKey,
+        };
       } catch (e) {}
 
       const res = await fetch('/api/analyze', {
@@ -69,6 +88,9 @@ function HomePageInner() {
           input: trimmed,
           mode: searchMode,
           userApiKey: customApiKey,
+          provider,
+          providerKeys,
+          forceEnrich,
         }),
       });
 
@@ -81,20 +103,45 @@ function HomePageInner() {
         throw new Error(data.error);
       }
 
-      setResult(data);
-
-      // Automatically save to search history
-      saveHistoryItem(trimmed, data);
+      if (forceEnrich && result?.wordResult && data.wordResult) {
+        // Intelligently merge AI-enriched data: take better synonyms, antonyms, examples from new data
+        // but preserve the current word's core info (grammar, IPA, etc.)
+        const enriched = data.wordResult;
+        const merged: AnalyzeResponse = {
+          ...data,
+          wordResult: {
+            ...result.wordResult,
+            // Prefer enriched data for content-heavy fields
+            synonyms: enriched.synonyms?.length > 0 ? enriched.synonyms : result.wordResult.synonyms,
+            antonyms: enriched.antonyms?.length > 0 ? enriched.antonyms : result.wordResult.antonyms,
+            examples: enriched.examples?.length > 0 ? enriched.examples : result.wordResult.examples,
+            learningTips: enriched.learningTips || result.wordResult.learningTips,
+            meaningSummary: enriched.meaningSummary || result.wordResult.meaningSummary,
+            aiEnriched: true,
+            aiProviderUsed: enriched.aiProviderUsed || data.aiProviderUsed,
+          },
+        };
+        setResult(merged);
+        saveHistoryItem(trimmed, merged);
+      } else {
+        setResult(data);
+        // Automatically save to search history
+        saveHistoryItem(trimmed, data);
+      }
     } catch (err: any) {
       console.error('Analysis error:', err);
-      setError(
-        err.message ||
-          'Terjadi kesalahan saat menghubungi AI. Silakan coba lagi.'
-      );
+      if (!forceEnrich) {
+        setError(
+          err.message ||
+            'Terjadi kesalahan saat menghubungi AI. Silakan coba lagi.'
+        );
+      }
     } finally {
       setIsLoading(false);
+      setIsEnriching(false);
     }
   };
+
 
   const handleSelectRecommendation = (word: string) => {
     setInputText(word);
@@ -373,6 +420,8 @@ function HomePageInner() {
             executeAnalysis(targetWord, 'de-id');
             window.scrollTo({ top: 120, behavior: 'smooth' });
           }}
+          onEnrichWithAI={() => executeAnalysis(inputText, mode, true)}
+          isEnriching={isEnriching}
         />
       )}
 

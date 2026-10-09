@@ -15,6 +15,8 @@ import {
   CompoundPart,
   InflectionInfo,
   TypoCorrection,
+  AIProvider,
+  ProviderKeys,
 } from './types';
 import {
   GERMAN_DICTIONARY,
@@ -107,10 +109,503 @@ ATURAN PENTING:
 /**
  * Main analysis function that coordinates AI LLM and linguistic fallback
  */
+/**
+ * Builds the comprehensive linguistic prompt for any LLM
+ */
+function buildAIPrompt(input: string, mode: LanguageMode, inputType: 'word' | 'sentence'): string {
+  return `
+Analisis input berikut dalam mode "${mode}" (tipe: "${inputType}"):
+Input: "${input}"
+
+PETUNJUK KHUSUS:
+- Berikan minimal 3-5 sinonim kaya (synonyms) lengkap dengan artikel (untuk Nomen), jenis kata (wordClass), dan arti bahasa Indonesia yang jelas.
+- Berikan minimal 2-4 antonim / konsep kontras (antonyms) dengan artikel (untuk Nomen), jenis kata, dan arti bahasa Indonesia. DILARANG KOSONG!
+- Berikan minimal 3 contoh kalimat bahasa Jerman yang ALAMI, ASLI, dan BERVARIASI KONTEKSNYA (misal situasi percakapan sehari-hari, sekolah/kantor, atau pemakaian idiomatik). Sesuaikan level CEFR (A1-C2) dan sertakan terjemahan bahasa Indonesia alami beserta 'contextNote'.
+- Jika merupakan kata majemuk (Kompositum), uraikan komponen penyusunnya di 'compoundBreakdown'.
+- Jika input adalah bentuk infleksi (misal Dativ, Akkusativ, Genitiv, Plural, atau Präteritum), sertakan objek 'inflectionInfo' dan gunakan kata dasar (Lemma) sebagai hasil utama.
+- Jika ada salah ketik (typo), berikan 'typoCorrection' dan analisis kata yang benar.
+
+Kembalikan respon DALAM FORMAT JSON MURNI yang sesuai dengan skema berikut:
+{
+  "input": "${input}",
+  "mode": "${mode}",
+  "inputType": "${inputType}",
+  "recommendations": [
+    {
+      "word": "alternatif kata / rekomendasi koreksi",
+      "article": "der / die / das atau null",
+      "translation": "arti singkat",
+      "reason": "alasan rekomendasi",
+      "confidence": 0.95
+    }
+  ],
+  "sentenceUmlautOptions": [
+    {
+      "originalSentence": "...",
+      "suggestedSentence": "...",
+      "changedWords": [{"from": "...", "to": "...", "meaning": "..."}],
+      "explanation": "..."
+    }
+  ],
+  ${
+    inputType === 'word'
+      ? `"wordResult": {
+    "word": "kata target jerman dasar",
+    "displayWord": "kata lengkap artikel jika Nomen (misal: der Tisch)",
+    "ipa": "/.../",
+    "translations": ["arti utama 1", "arti 2", "arti 3"],
+    "meaningSummary": "penjelasan makna dan konteks pemakaian secara mendalam",
+    "wordClass": "Nomen | Verb | Modalverb | Adjektiv | Adverb | Präposition | Konjunktion | Subjunktion",
+    "cefrLevel": "A1 | A2 | B1 | B2 | C1 | C2",
+    "grammar": {
+      "type": "nomen | verb | adjektiv | praeposition | general",
+      "data": {
+        // jika Nomen: artikel, gender, singular, plural, genitivSingular
+        // jika Verb: infinitiv, praesens, praeteritum, partizip2, hilfsverb, isIrregular, isSeparable, prefix
+        // jika Adjektiv: positiv, komparativ, superlativ
+        // jika Präposition: kasus, exampleUsage
+      }
+    },
+    "synonyms": [
+      {"word": "sinonim 1", "article": "der/die/das", "wordClass": "Nomen", "translation": "arti bahasa indonesia"},
+      {"word": "sinonim 2", "article": "der/die/das", "wordClass": "Nomen", "translation": "arti bahasa indonesia"}
+    ],
+    "antonyms": [
+      {"word": "antonim 1", "article": "der/die/das", "wordClass": "Nomen", "translation": "arti bahasa indonesia"},
+      {"word": "antonim 2", "article": "der/die/das", "wordClass": "Nomen", "translation": "arti bahasa indonesia"}
+    ],
+    "examples": [
+      {"level": "A1 | A2 | B1 | B2 | C1 | C2", "german": "Kalimat Jerman alami dan kontekstual", "indonesian": "Terjemahan Indonesia alami", "contextNote": "Konteks situasi atau tata bahasa"}
+    ],
+    "learningTips": "tips belajar / cara mengingat / keunikan penggunaan",
+    "falseFriendsWarning": "peringatan perbedaan dengan bahasa Inggris (jika ada, atau null)",
+    "compoundBreakdown": {
+      "isCompound": true,
+      "components": [
+        {"part": "komponen 1", "article": "die", "wordClass": "Nomen", "meaning": "arti 1", "role": "Bestimmungswort"},
+        {"part": "komponen 2", "article": "der", "wordClass": "Nomen", "meaning": "arti 2", "role": "Grundwort"}
+      ],
+      "explanation": "penjelasan pembentukan kata",
+      "headWordRule": "penjelasan kaidah gender kata majemuk"
+    },
+    "inflectionInfo": {
+      "isInflectedForm": true,
+      "searchedForm": "${input}",
+      "baseForm": "bentuk dasar",
+      "baseWord": "kata dasar tanpa artikel",
+      "grammaticalForm": "nama bentuk tata bahasa",
+      "explanation": "penjelasan perubahan bentuk"
+    },
+    "typoCorrection": {
+      "originalInput": "${input}",
+      "suggestedWord": "kata baku yang benar",
+      "displaySuggestedWord": "kata baku lengkap artikel",
+      "explanation": "penjelasan koreksi salah ketik",
+      "confidence": 0.95
+    }
+  }`
+      : `"sentenceResult": {
+    "originalSentence": "${input}",
+    "translatedSentence": "terjemahan alami yang luwes",
+    "sourceLang": "${mode === 'de-id' ? 'de' : 'id'}",
+    "targetLang": "${mode === 'de-id' ? 'id' : 'de'}",
+    "literalTranslation": "terjemahan harfiah jika ada perbedaan nuansa",
+    "sentenceStructureExplanation": "analisis tata bahasa, posisi kata kerja (V2/Nebensatz), konjugasi, dan kasus",
+    "grammarHighlights": ["sorotan tata bahasa 1", "sorotan 2"],
+    "alternatives": [{"sentence": "kalimat alternatif", "nuance": "nuansa pemakaian"}],
+    "wordByWordAnalysis": [
+      {
+        "token": "kata",
+        "lemma": "kata dasar",
+        "translation": "arti dalam kalimat",
+        "wordClass": "jenis kata",
+        "grammaticalInfo": "informasi peran gramatikal",
+        "isSearchableWord": true
+      }
+    ],
+    "keyVocabulary": [
+      {"word": "kata penting", "article": "der/die/das", "wordClass": "Nomen", "translation": "arti"}
+    ]
+  }`
+  }
+}
+HANYA kembalikan JSON valid tanpa markdown tag seperti \`\`\`json.`;
+}
+
+/**
+ * Calls Google Gemini REST API with available priority models and JSON mode
+ */
+async function callGeminiAPI(
+  input: string,
+  mode: LanguageMode,
+  inputType: 'word' | 'sentence',
+  apiKey: string
+): Promise<AnalyzeResponse | null> {
+  const modelsToTry = [
+    'gemini-3.1-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-3.7-flash',
+    'gemini-flash-latest',
+    'gemini-3.5-flash',
+  ];
+
+  const prompt = buildAIPrompt(input, mode, inputType);
+
+  for (const modelName of modelsToTry) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 9000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: `${SYSTEM_PROMPT}\n\n${prompt}` }],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.2,
+            topP: 0.95,
+            responseMimeType: 'application/json',
+          },
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) continue;
+
+      const json = await res.json();
+      const candidateText = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      if (!candidateText) continue;
+
+      const cleaned = candidateText.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsed: AnalyzeResponse = JSON.parse(cleaned);
+      parsed.aiProviderUsed = `Google Gemini (${modelName})`;
+      if (parsed.wordResult) {
+        parsed.wordResult.aiEnriched = true;
+        parsed.wordResult.aiProviderUsed = `Google Gemini (${modelName})`;
+      }
+      return parsed;
+    } catch {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Calls OpenAI ChatGPT API (GPT-4o, GPT-4o-mini)
+ */
+async function callOpenAIAPI(
+  input: string,
+  mode: LanguageMode,
+  inputType: 'word' | 'sentence',
+  apiKey: string
+): Promise<AnalyzeResponse | null> {
+  const models = ['gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo'];
+  const prompt = buildAIPrompt(input, mode, inputType);
+
+  for (const model of models) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 9000);
+
+    try {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.2,
+          response_format: { type: 'json_object' },
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) continue;
+
+      const json = await res.json();
+      const content = json?.choices?.[0]?.message?.content || '';
+      if (!content) continue;
+
+      const cleaned = content.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsed: AnalyzeResponse = JSON.parse(cleaned);
+      parsed.aiProviderUsed = `OpenAI ChatGPT (${model})`;
+      if (parsed.wordResult) {
+        parsed.wordResult.aiEnriched = true;
+        parsed.wordResult.aiProviderUsed = `OpenAI ChatGPT (${model})`;
+      }
+      return parsed;
+    } catch {
+      clearTimeout(timeoutId);
+    }
+  }
+  return null;
+}
+
+/**
+ * Calls Anthropic Claude API (Claude 3.5 Haiku, Claude 3.5 Sonnet)
+ */
+async function callClaudeAPI(
+  input: string,
+  mode: LanguageMode,
+  inputType: 'word' | 'sentence',
+  apiKey: string
+): Promise<AnalyzeResponse | null> {
+  const models = [
+    'claude-3-5-haiku-20241022',
+    'claude-3-5-sonnet-20241022',
+    'claude-3-haiku-20240307',
+  ];
+  const prompt = buildAIPrompt(input, mode, inputType);
+
+  for (const model of models) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 4096,
+          system: SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) continue;
+
+      const json = await res.json();
+      const text = json?.content?.[0]?.text || '';
+      if (!text) continue;
+
+      const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsed: AnalyzeResponse = JSON.parse(cleaned);
+      parsed.aiProviderUsed = `Anthropic Claude (${model})`;
+      if (parsed.wordResult) {
+        parsed.wordResult.aiEnriched = true;
+        parsed.wordResult.aiProviderUsed = `Anthropic Claude (${model})`;
+      }
+      return parsed;
+    } catch {
+      clearTimeout(timeoutId);
+    }
+  }
+  return null;
+}
+
+/**
+ * Calls xAI Grok API (Grok-2, Grok-beta)
+ */
+async function callGrokAPI(
+  input: string,
+  mode: LanguageMode,
+  inputType: 'word' | 'sentence',
+  apiKey: string
+): Promise<AnalyzeResponse | null> {
+  const models = ['grok-2-latest', 'grok-beta'];
+  const prompt = buildAIPrompt(input, mode, inputType);
+
+  for (const model of models) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const res = await fetch('https://api.x.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.2,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) continue;
+
+      const json = await res.json();
+      const content = json?.choices?.[0]?.message?.content || '';
+      if (!content) continue;
+
+      const cleaned = content.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsed: AnalyzeResponse = JSON.parse(cleaned);
+      parsed.aiProviderUsed = `xAI Grok (${model})`;
+      if (parsed.wordResult) {
+        parsed.wordResult.aiEnriched = true;
+        parsed.wordResult.aiProviderUsed = `xAI Grok (${model})`;
+      }
+      return parsed;
+    } catch {
+      clearTimeout(timeoutId);
+    }
+  }
+  return null;
+}
+
+/**
+ * Calls DeepSeek API (deepseek-chat)
+ */
+async function callDeepSeekAPI(
+  input: string,
+  mode: LanguageMode,
+  inputType: 'word' | 'sentence',
+  apiKey: string
+): Promise<AnalyzeResponse | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  const prompt = buildAIPrompt(input, mode, inputType);
+
+  try {
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!res.ok) return null;
+
+    const json = await res.json();
+    const content = json?.choices?.[0]?.message?.content || '';
+    if (!content) return null;
+
+    const cleaned = content.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const parsed: AnalyzeResponse = JSON.parse(cleaned);
+    parsed.aiProviderUsed = 'DeepSeek AI';
+    if (parsed.wordResult) {
+      parsed.wordResult.aiEnriched = true;
+      parsed.wordResult.aiProviderUsed = 'DeepSeek AI';
+    }
+    return parsed;
+  } catch {
+    clearTimeout(timeoutId);
+  }
+  return null;
+}
+
+/**
+ * Multi-AI Orchestrator that delegates to chosen provider or cascades automatically
+ */
+async function callMultiAIHub(
+  input: string,
+  mode: LanguageMode,
+  inputType: 'word' | 'sentence',
+  provider: AIProvider = 'auto',
+  providerKeys?: ProviderKeys,
+  userApiKeyOverride?: string
+): Promise<AnalyzeResponse | null> {
+  const geminiKey = (
+    providerKeys?.gemini ||
+    userApiKeyOverride ||
+    process.env.AI_API_KEY ||
+    process.env.GEMINI_API_KEY ||
+    ''
+  ).trim();
+
+  const openaiKey = (providerKeys?.openai || process.env.OPENAI_API_KEY || '').trim();
+  const claudeKey = (providerKeys?.claude || process.env.ANTHROPIC_API_KEY || '').trim();
+  const grokKey = (providerKeys?.grok || process.env.GROK_API_KEY || '').trim();
+  const deepseekKey = (providerKeys?.deepseek || process.env.DEEPSEEK_API_KEY || '').trim();
+
+  // 1. Direct provider preference
+  if (provider === 'gemini' && geminiKey) {
+    const res = await callGeminiAPI(input, mode, inputType, geminiKey);
+    if (res) return res;
+  } else if (provider === 'openai' && openaiKey) {
+    const res = await callOpenAIAPI(input, mode, inputType, openaiKey);
+    if (res) return res;
+  } else if (provider === 'claude' && claudeKey) {
+    const res = await callClaudeAPI(input, mode, inputType, claudeKey);
+    if (res) return res;
+  } else if (provider === 'grok' && grokKey) {
+    const res = await callGrokAPI(input, mode, inputType, grokKey);
+    if (res) return res;
+  } else if (provider === 'deepseek' && deepseekKey) {
+    const res = await callDeepSeekAPI(input, mode, inputType, deepseekKey);
+    if (res) return res;
+  }
+
+  // 2. Auto / Cascade fallback across all available keys
+  if (geminiKey) {
+    const res = await callGeminiAPI(input, mode, inputType, geminiKey);
+    if (res) return res;
+  }
+  if (openaiKey) {
+    const res = await callOpenAIAPI(input, mode, inputType, openaiKey);
+    if (res) return res;
+  }
+  if (claudeKey) {
+    const res = await callClaudeAPI(input, mode, inputType, claudeKey);
+    if (res) return res;
+  }
+  if (grokKey) {
+    const res = await callGrokAPI(input, mode, inputType, grokKey);
+    if (res) return res;
+  }
+  if (deepseekKey) {
+    const res = await callDeepSeekAPI(input, mode, inputType, deepseekKey);
+    if (res) return res;
+  }
+
+  return null;
+}
+
+/**
+ * Main analysis function that coordinates Multi-AI LLMs and linguistic fallback
+ */
 export async function analyzeGermanText(
   input: string,
   mode: LanguageMode,
-  apiKeyOverride?: string
+  apiKeyOverride?: string,
+  provider: AIProvider = 'auto',
+  providerKeys?: ProviderKeys,
+  forceEnrich?: boolean
 ): Promise<AnalyzeResponse> {
   const trimmed = input.trim();
   if (!trimmed) {
@@ -156,39 +651,36 @@ export async function analyzeGermanText(
     }
   }
 
-  // 2. Check if an API key is available (Server env or user override)
-  const apiKey = (
-    apiKeyOverride ||
-    process.env.AI_API_KEY ||
-    process.env.GEMINI_API_KEY ||
-    ''
-  ).trim();
+  // 2. Call Multi-AI Hub (Gemini, ChatGPT, Claude, Grok, DeepSeek, Auto)
+  try {
+    const aiResponse = await callMultiAIHub(
+      trimmed,
+      mode,
+      inputType,
+      provider,
+      providerKeys,
+      apiKeyOverride
+    );
 
-  // Call Gemini if an API key is provided
-  if (apiKey && apiKey.length > 15) {
-    try {
-      const aiResponse = await callGeminiAPI(trimmed, mode, inputType, apiKey);
-      if (aiResponse) {
-        // Merge with heuristic recommendations if any
-        if (recommendations.length > 0 && (!aiResponse.recommendations || aiResponse.recommendations.length === 0)) {
-          aiResponse.recommendations = recommendations;
-        }
-        if (sentenceUmlautOptions.length > 0 && (!aiResponse.sentenceUmlautOptions || aiResponse.sentenceUmlautOptions.length === 0)) {
-          aiResponse.sentenceUmlautOptions = sentenceUmlautOptions;
-        }
-        if (detectedInflection && aiResponse.wordResult && !aiResponse.wordResult.inflectionInfo) {
-          aiResponse.wordResult.inflectionInfo = detectedInflection;
-          aiResponse.inflectionInfo = detectedInflection;
-        }
-        if (detectedTypo && aiResponse.wordResult && !aiResponse.wordResult.typoCorrection) {
-          aiResponse.wordResult.typoCorrection = detectedTypo;
-          aiResponse.typoCorrection = detectedTypo;
-        }
-        return aiResponse;
+    if (aiResponse) {
+      if (recommendations.length > 0 && (!aiResponse.recommendations || aiResponse.recommendations.length === 0)) {
+        aiResponse.recommendations = recommendations;
       }
-    } catch (err) {
-      console.warn('AI API call failed, falling back to linguistic engine:', err);
+      if (sentenceUmlautOptions.length > 0 && (!aiResponse.sentenceUmlautOptions || aiResponse.sentenceUmlautOptions.length === 0)) {
+        aiResponse.sentenceUmlautOptions = sentenceUmlautOptions;
+      }
+      if (detectedInflection && aiResponse.wordResult && !aiResponse.wordResult.inflectionInfo) {
+        aiResponse.wordResult.inflectionInfo = detectedInflection;
+        aiResponse.inflectionInfo = detectedInflection;
+      }
+      if (detectedTypo && aiResponse.wordResult && !aiResponse.wordResult.typoCorrection) {
+        aiResponse.wordResult.typoCorrection = detectedTypo;
+        aiResponse.typoCorrection = detectedTypo;
+      }
+      return aiResponse;
     }
+  } catch (err) {
+    console.warn('Multi-AI Hub call failed, falling back to linguistic engine:', err);
   }
 
   // 3. High-quality Offline & Real Translation Linguistic Engine Fallback
@@ -201,182 +693,6 @@ export async function analyzeGermanText(
     detectedInflection,
     detectedTypo
   );
-}
-
-/**
- * Calls Gemini REST API using standard fetch with multiple model fallbacks
- */
-async function callGeminiAPI(
-  input: string,
-  mode: LanguageMode,
-  inputType: 'word' | 'sentence',
-  apiKey: string
-): Promise<AnalyzeResponse | null> {
-  const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash'];
-
-  const prompt = `
-Analisis input berikut dalam mode "${mode}" (tipe: "${inputType}"):
-Input: "${input}"
-
-Kembalikan respon dalam format JSON yang sesuai dengan interface berikut:
-{
-  "input": "${input}",
-  "mode": "${mode}",
-  "inputType": "${inputType}",
-  "recommendations": [
-    {
-      "word": "contoh alternatif kata / koreksi umlaut",
-      "article": "der / die / das atau null",
-      "translation": "arti singkat",
-      "reason": "alasan rekomendasi / penjelasan perbedaan",
-      "confidence": 0.95
-    }
-  ],
-  "sentenceUmlautOptions": [
-    {
-      "originalSentence": "...",
-      "suggestedSentence": "...",
-      "changedWords": [{"from": "...", "to": "...", "meaning": "..."}],
-      "explanation": "..."
-    }
-  ],
-  ${
-    inputType === 'word'
-      ? `"wordResult": {
-    "word": "kata target jerman",
-    "displayWord": "kata dengan artikel jika Nomen (misal: der Tisch)",
-    "ipa": "/.../",
-    "translations": ["arti 1", "arti 2"],
-    "meaningSummary": "penjelasan makna dan konteks secara terperinci",
-    "wordClass": "Nomen | Verb | Modalverb | Adjektiv | Adverb | Präposition | Konjunktion | Subjunktion",
-    "cefrLevel": "A1 | A2 | B1 | B2 | C1 | C2",
-    "grammar": {
-      "type": "nomen | verb | adjektiv | praeposition | general",
-      "data": {
-        // jika nomen: artikel, gender, singular, plural, genitivSingular
-        // jika verb: infinitiv, praesens, praeteritum, partizip2, hilfsverb, isIrregular, isSeparable, prefix
-        // jika adjektiv: positiv, komparativ, superlativ
-        // jika praeposition: kasus, exampleUsage
-      }
-    },
-    "synonyms": [
-      {"word": "sinonim 1", "article": "der/die/das (jika Nomen)", "wordClass": "jenis kata", "translation": "arti bahasa indonesia"},
-      {"word": "sinonim 2", "article": "der/die/das", "wordClass": "jenis kata", "translation": "arti bahasa indonesia"}
-    ],
-    "antonyms": [
-      {"word": "antonim 1", "article": "der/die/das (jika Nomen)", "wordClass": "jenis kata", "translation": "arti bahasa indonesia"},
-      {"word": "antonim 2", "article": "der/die/das", "wordClass": "jenis kata", "translation": "arti bahasa indonesia"}
-    ],
-    "examples": [
-      {"level": "A1 | A2 | B1 | B2 | C1 | C2", "german": "Kalimat Jerman asli dan alami", "indonesian": "Terjemahan Indonesia yang luwes", "contextNote": "Catatan konteks / tata bahasa"}
-    ],
-    "learningTips": "tips belajar / pengucapan / trik mengingat / pemakaian kontekstual",
-    "falseFriendsWarning": "peringatan jika ada kemiripan palsu (atau kosongkan jika tidak ada)",
-    "compoundBreakdown": {
-      "isCompound": true,
-      "components": [
-        {"part": "die Hand", "article": "die", "wordClass": "Nomen", "meaning": "tangan", "role": "Bestimmungswort"},
-        {"part": "der Schuh", "article": "der", "wordClass": "Nomen", "meaning": "sepatu", "role": "Grundwort"}
-      ],
-      "explanation": "Handschuh terbentuk dari Hand (tangan) dan Schuh (sepatu), secara harfiah adalah sepatu tangan yang berarti sarung tangan.",
-      "headWordRule": "Dalam bahasa Jerman, artikel kata majemuk selalu mengikuti kata penyusun terakhir (der Schuh -> der Handschuh)."
-    },
-    "inflectionInfo": {
-      "isInflectedForm": true,
-      "searchedForm": "${input}",
-      "baseForm": "bentuk dasar lengkap (misal: das Haus, gehen, der Mann)",
-      "baseWord": "kata dasar tanpa artikel (misal: Haus, gehen, Mann)",
-      "grammaticalForm": "nama bentuk gramatikal (misal: Plural, Kasus Dativ, Präteritum)",
-      "explanation": "penjelasan edukatif tata bahasa mengapa kata berubah bentuk"
-    },
-    "typoCorrection": {
-      "originalInput": "${input}",
-      "suggestedWord": "kata yang benar",
-      "displaySuggestedWord": "kata yang benar lengkap dengan artikel jika Nomen",
-      "explanation": "penjelasan koreksi typo",
-      "confidence": 0.95
-    }
-  }`
-      : `"sentenceResult": {
-    "originalSentence": "${input}",
-    "translatedSentence": "terjemahan alami",
-    "sourceLang": "${mode === 'de-id' ? 'de' : 'id'}",
-    "targetLang": "${mode === 'de-id' ? 'id' : 'de'}",
-    "literalTranslation": "terjemahan harfiah jika berbeda",
-    "sentenceStructureExplanation": "penjelasan tata bahasa, posisi kata kerja (V2/Satzklammer), konjugasi",
-    "grammarHighlights": ["poin tata bahasa 1", "poin 2"],
-    "alternatives": [{"sentence": "...", "nuance": "..."}],
-    "wordByWordAnalysis": [
-      {
-        "token": "kata",
-        "lemma": "kata dasar",
-        "translation": "arti",
-        "wordClass": "jenis kata",
-        "grammaticalInfo": "penjelasan kasus/waktu/konjugasi",
-        "isSearchableWord": true
-      }
-    ],
-    "keyVocabulary": [
-      {"word": "...", "article": "der/die/das", "wordClass": "...", "translation": "..."}
-    ]
-  }`
-  }
-}
-HANYA kembalikan JSON valid tanpa tag \`\`\`json.
-`;
-
-  for (const modelName of modelsToTry) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
-
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: `${SYSTEM_PROMPT}\n\n${prompt}` }],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.2,
-            topP: 0.95,
-          },
-        }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        console.warn(`Gemini API (${modelName}) returned status ${res.status}`);
-        continue;
-      }
-
-      const json = await res.json();
-      const candidateText =
-        json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-      if (!candidateText) continue;
-
-      // Clean any markdown formatting if present
-      const cleaned = candidateText
-        .replace(/```json/gi, '')
-        .replace(/```/g, '')
-        .trim();
-
-      const parsed: AnalyzeResponse = JSON.parse(cleaned);
-      return parsed;
-    } catch (e) {
-      clearTimeout(timeoutId);
-      console.warn(`Error querying Gemini API (${modelName}):`, e);
-    }
-  }
-
-  return null;
 }
 
 /**
@@ -1548,8 +1864,41 @@ async function resolveThesaurusSynonymsAndAntonyms(
 }
 
 /**
+ * Fetches real native German example sentences from the Tatoeba linguistic corpus
+ */
+async function fetchTatoebaExamples(targetWord: string): Promise<ExampleSentence[]> {
+  try {
+    const url = `https://tatoeba.org/en/api_v0/search?from=deu&to=ind&query=${encodeURIComponent(targetWord)}&trans_filter=limit&limit=4`;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'GermanDictionary/2.0' },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const list: ExampleSentence[] = [];
+    const targetLower = targetWord.toLowerCase();
+
+    for (const item of data.results || []) {
+      const g = item.text;
+      const trans = item.translations?.[0]?.[0]?.text;
+      if (g && trans && g.toLowerCase().includes(targetLower)) {
+        list.push({
+          level: 'A2',
+          german: g,
+          indonesian: trans,
+          contextNote: 'Kalimat percakapan alami penutur asli (Korpus Tatoeba)',
+        });
+      }
+    }
+    return list;
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Generates authentic, grammatically verified German example sentences across CEFR levels
- * (Zero generic placeholders - authentic collocations)
+ * (Prioritizes real native corpus, then diverse communicative patterns - zero monotone templates)
  */
 async function generateAuthenticGermanExamples(
   targetWord: string,
@@ -1562,10 +1911,19 @@ async function generateAuthenticGermanExamples(
   const l = targetWord.toLowerCase().trim();
   const examples: ExampleSentence[] = [];
 
+  // 1. Try real linguistic corpus (Tatoeba) first
+  const tatoebaList = await fetchTatoebaExamples(targetWord);
+  if (tatoebaList.length >= 2) {
+    return tatoebaList.slice(0, 3);
+  } else if (tatoebaList.length === 1) {
+    examples.push(tatoebaList[0]);
+  }
+
+  // 2. Generate varied, contextually authentic sentences across CEFR levels
   if (wordClass === 'Adjektiv') {
-    const ex1De = `Diese Vorgehensweise ist für das gesamte Vorhaben außerordentlich ${l}.`;
-    const ex2De = `Wir suchen nach einer ${l}en Lösung für diese anspruchsvolle Situation.`;
-    const ex3De = `Je ${l}er der methodische Ansatz gewählt wird, desto nachhaltiger wirken die Ergebnisse.`;
+    const ex1De = `In diesem Kontext ist die Vorgehensweise sehr ${l}.`;
+    const ex2De = `Wir suchen nach einer ${l}en Lösung für diese Aufgabe.`;
+    const ex3De = `Je ${l}er das Ergebnis ist, desto größer ist die allgemeine Zufriedenheit.`;
 
     const [ex1Id, ex2Id, ex3Id] = await Promise.all([
       translateTextOnline(ex1De, 'de', 'id'),
@@ -1573,22 +1931,24 @@ async function generateAuthenticGermanExamples(
       translateTextOnline(ex3De, 'de', 'id'),
     ]);
 
+    if (examples.length === 0) {
+      examples.push({
+        level: 'A1',
+        german: ex1De,
+        indonesian: ex1Id || `Dalam konteks ini, langkah tersebut sangat ${primaryTrans}.`,
+        contextNote: 'Predikatif dalam situasi sehari-hari',
+      });
+    }
     examples.push({
       level: 'A2',
-      german: ex1De,
-      indonesian: ex1Id || `Pendekatan ini sangat ${primaryTrans} bagi seluruh rencana.`,
-      contextNote: 'Penggunaan predikatif dalam kalimat deklaratif',
-    });
-    examples.push({
-      level: 'B1',
       german: ex2De,
-      indonesian: ex2Id || `Kami mencari solusi yang ${primaryTrans} untuk situasi yang menantang ini.`,
+      indonesian: ex2Id || `Kami mencari solusi yang ${primaryTrans} untuk tugas ini.`,
       contextNote: 'Deklinasi kata sifat atributif (Akkusativ feminin)',
     });
     examples.push({
       level: ['C1', 'C2'].includes(cefrLevel) ? cefrLevel : 'B2',
       german: ex3De,
-      indonesian: ex3Id || `Semakin ${primaryTrans} pendekatan yang dipilih, semakin berkelanjutan hasil yang dicapai.`,
+      indonesian: ex3Id || `Semakin ${primaryTrans} hasilnya, semakin besar kepuasan bersama.`,
       contextNote: 'Struktur proporsional bertingkat (je... desto...)',
     });
   } else if (wordClass === 'Verb') {
@@ -1597,9 +1957,9 @@ async function generateAuthenticGermanExamples(
     const hasInseparablePrefix = /^(be|ver|er|zer|ent|miss|ge)/.test(l);
     const partizip2 = hasInseparablePrefix ? stem + 't' : 'ge' + stem + 't';
 
-    const ex1De = `In anspruchsvollen Situationen ${praesens} man stets mit großer Umsicht.`;
-    const ex2De = `Die Projektleitung hat das neue Konzept gestern eingehend ${partizip2}.`;
-    const ex3De = `Es erfordert fundierte Fachkompetenz, diese Thematik angemessen zu ${l}.`;
+    const ex1De = `Ich möchte heute gerne mehr über dieses Thema ${l}.`;
+    const ex2De = `Kannst du mir bitte zeigen, wie man das richtig ${praesens}?`;
+    const ex3De = `Sie haben am Wochenende gemeinsam daran gearbeitet und vieles ${partizip2}.`;
 
     const [ex1Id, ex2Id, ex3Id] = await Promise.all([
       translateTextOnline(ex1De, 'de', 'id'),
@@ -1607,32 +1967,34 @@ async function generateAuthenticGermanExamples(
       translateTextOnline(ex3De, 'de', 'id'),
     ]);
 
+    if (examples.length === 0) {
+      examples.push({
+        level: 'A1',
+        german: ex1De,
+        indonesian: ex1Id || `Saya ingin ${primaryTrans} lebih banyak tentang topik ini hari ini.`,
+        contextNote: 'Penggunaan Modalverb (möchte + Infinitiv)',
+      });
+    }
     examples.push({
       level: 'A2',
-      german: ex1De,
-      indonesian: ex1Id || `Dalam situasi yang menuntut, orang selalu ${primaryTrans} dengan penuh kehati-hatian.`,
-      contextNote: 'Penggunaan waktu kini (Präsens) dengan subjek umum man',
-    });
-    examples.push({
-      level: 'B1',
       german: ex2De,
-      indonesian: ex2Id || `Pimpinan proyek telah ${primaryTrans} konsep baru tersebut secara mendalam kemarin.`,
-      contextNote: 'Bentuk lampau Perfekt dengan kata kerja bantu haben',
+      indonesian: ex2Id || `Bisakah kamu menunjukkan kepadaku bagaimana cara ${primaryTrans} ini dengan benar?`,
+      contextNote: 'Percakapan tanya jawab sehari-hari',
     });
     examples.push({
-      level: ['C1', 'C2'].includes(cefrLevel) ? cefrLevel : 'B2',
+      level: ['C1', 'C2'].includes(cefrLevel) ? cefrLevel : 'B1',
       german: ex3De,
-      indonesian: ex3Id || `Dibutuhkan keahlian profesional yang kokoh untuk dapat ${primaryTrans} topik ini secara layak.`,
-      contextNote: 'Konstruksi infinitif formal dengan zu',
+      indonesian: ex3Id || `Mereka bekerja sama di akhir pekan dan telah ${primaryTrans} banyak hal.`,
+      contextNote: 'Bentuk lampau Perfekt',
     });
   } else if (wordClass === 'Nomen') {
     const artCap = artikel && artikel !== '-' ? artikel.charAt(0).toUpperCase() + artikel.slice(1) : 'Das';
     const akkArt = artikel === 'der' ? 'den' : artikel === 'die' ? 'die' : 'das';
     const datArt = artikel === 'der' ? 'dem' : artikel === 'die' ? 'der' : 'dem';
 
-    const ex1De = `${artCap} ${targetWord} spielt eine maßgebliche Rolle bei der erfolgreichen Umsetzung.`;
-    const ex2De = `Die Experten analysierten ${akkArt} ${targetWord} aus unterschiedlichen fachlichen Perspektiven.`;
-    const ex3De = `Im Zusammenhang mit ${datArt} ${targetWord} müssen noch wesentliche Kernfragen geklärt werden.`;
+    const ex1De = `Im Alltag begegnet man oft ${datArt} ${targetWord}.`;
+    const ex2De = `Kannst du mir bitte mehr über ${akkArt} ${targetWord} erzählen?`;
+    const ex3De = `In vielen Bereichen gewinnt ${artCap} ${targetWord} zunehmend an Bedeutung.`;
 
     const [ex1Id, ex2Id, ex3Id] = await Promise.all([
       translateTextOnline(ex1De, 'de', 'id'),
@@ -1640,32 +2002,34 @@ async function generateAuthenticGermanExamples(
       translateTextOnline(ex3De, 'de', 'id'),
     ]);
 
+    if (examples.length === 0) {
+      examples.push({
+        level: 'A1',
+        german: ex1De,
+        indonesian: ex1Id || `Dalam keseharian orang sering menjumpai ${primaryTrans}.`,
+        contextNote: 'Konteks kehidupan sehari-hari (Dativ)',
+      });
+    }
     examples.push({
       level: 'A2',
-      german: ex1De,
-      indonesian: ex1Id || `${targetWord} (${primaryTrans}) memainkan peran penting dalam implementasi yang sukses.`,
-      contextNote: 'Fungsi sebagai subjek kalimat utama (Nominativ)',
-    });
-    examples.push({
-      level: 'B1',
       german: ex2De,
-      indonesian: ex2Id || `Para pakar menganalisis ${primaryTrans} tersebut dari berbagai sudut pandang keahlian.`,
-      contextNote: 'Objek penderita terarah (Akkusativ)',
+      indonesian: ex2Id || `Bisakah kamu menceritakan lebih banyak kepadaku tentang ${primaryTrans}?`,
+      contextNote: 'Kalimat tanya komunikatif (über + Akkusativ)',
     });
     examples.push({
       level: ['C1', 'C2'].includes(cefrLevel) ? cefrLevel : 'B2',
       german: ex3De,
-      indonesian: ex3Id || `Terkait dengan ${primaryTrans}, masih ada pertanyaan mendasar yang perlu dijawab tuntas.`,
-      contextNote: 'Konstruksi preposisional formal (Dativ)',
+      indonesian: ex3Id || `Di berbagai bidang, ${primaryTrans} makin memiliki arti penting.`,
+      contextNote: 'Kolokasi idiomatik Jerman (an Bedeutung gewinnen)',
     });
   } else if (wordClass === 'Präposition') {
-    const ex1De = `Die Vereinbarung gilt ${l} Ausnahme für alle beteiligten Partner.`;
+    const ex1De = `Wir treffen uns ${l} dem Gebäude.`;
     const ex1Id = await translateTextOnline(ex1De, 'de', 'id');
     examples.push({
-      level: 'B1',
+      level: 'A2',
       german: ex1De,
-      indonesian: ex1Id || `Kesepakatan ini berlaku ${primaryTrans} pengecualian bagi seluruh mitra terkait.`,
-      contextNote: `Penggunaan tata bahasa sesuai tuntutan kasus Präposition (${l})`,
+      indonesian: ex1Id || `Kita bertemu ${primaryTrans} gedung tersebut.`,
+      contextNote: `Penggunaan tata bahasa Präposition (${l})`,
     });
   } else {
     // Adverb / Particles

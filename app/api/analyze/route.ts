@@ -5,7 +5,7 @@ import { LanguageMode } from '@/lib/types';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { input, mode = 'de-id', userApiKey } = body;
+    const { input, mode = 'de-id', userApiKey, provider, providerKeys, forceEnrich } = body;
 
     // 1. Validation
     if (!input || typeof input !== 'string') {
@@ -25,8 +25,15 @@ export async function POST(req: NextRequest) {
 
     const validMode: LanguageMode = mode === 'id-de' ? 'id-de' : 'de-id';
 
-    // 2. Perform deep linguistic and AI analysis
-    const result = await analyzeGermanText(trimmed, validMode, userApiKey);
+    // 2. Perform deep linguistic and multi-AI analysis
+    const result = await analyzeGermanText(
+      trimmed,
+      validMode,
+      userApiKey,
+      provider,
+      providerKeys,
+      forceEnrich
+    );
 
     return NextResponse.json(result, { status: 200 });
   } catch (err: unknown) {

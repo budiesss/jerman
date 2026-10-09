@@ -7,7 +7,11 @@ const SETTINGS_KEY = 'deutsch_lernen_settings_v1';
 export const DEFAULT_SETTINGS: UserSettings = {
   theme: 'dark',
   customApiKey: '',
-  aiProvider: 'default',
+  openaiApiKey: '',
+  claudeApiKey: '',
+  grokApiKey: '',
+  deepseekApiKey: '',
+  aiProvider: 'auto',
   speechRate: 0.9,
   autoPronounce: false,
 };

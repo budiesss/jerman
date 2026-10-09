@@ -132,6 +132,25 @@ export interface TypoCorrection {
   confidence: number;
 }
 
+export type AIProvider = 'auto' | 'gemini' | 'openai' | 'claude' | 'grok' | 'deepseek' | 'default';
+
+export interface ProviderKeys {
+  gemini?: string;
+  openai?: string;
+  claude?: string;
+  grok?: string;
+  deepseek?: string;
+}
+
+export interface AnalyzeRequestPayload {
+  input: string;
+  mode: LanguageMode;
+  userApiKey?: string;
+  provider?: AIProvider;
+  providerKeys?: ProviderKeys;
+  forceEnrich?: boolean;
+}
+
 export interface WordResult {
   word: string;
   displayWord: string;
@@ -149,6 +168,8 @@ export interface WordResult {
   compoundBreakdown?: CompoundBreakdown;
   inflectionInfo?: InflectionInfo;
   typoCorrection?: TypoCorrection;
+  aiEnriched?: boolean;
+  aiProviderUsed?: string;
 }
 
 export interface SentenceTokenAnalysis {
@@ -211,6 +232,7 @@ export interface AnalyzeResponse {
   error?: string;
   inflectionInfo?: InflectionInfo;
   typoCorrection?: TypoCorrection;
+  aiProviderUsed?: string;
 }
 
 export interface HistoryItem {
@@ -237,7 +259,12 @@ export interface FavoriteWordItem {
 export interface UserSettings {
   theme: 'light' | 'dark' | 'system';
   customApiKey?: string;
-  aiProvider?: 'gemini' | 'openai' | 'default';
+  openaiApiKey?: string;
+  claudeApiKey?: string;
+  grokApiKey?: string;
+  deepseekApiKey?: string;
+  aiProvider: AIProvider;
   speechRate: number; // 0.8 - 1.2
   autoPronounce: boolean;
 }
+
