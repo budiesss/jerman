@@ -104,12 +104,63 @@ export default function DictionaryPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // 250k Lexicon Database States
+  const [catalogMode, setCatalogMode] = useState<'lexicon250k' | 'curated'>('lexicon250k');
+  const [lexiconResults, setLexiconResults] = useState<any[]>([]);
+  const [lexiconTotal, setLexiconTotal] = useState(250533);
+  const [lexiconPage, setLexiconPage] = useState(1);
+  const [lexiconTotalPages, setLexiconTotalPages] = useState(1);
+  const [isFetchingLexicon, setIsFetchingLexicon] = useState(false);
+  const [lexiconStats, setLexiconStats] = useState<any>(null);
+
   // Default to first word on initial mount
   useEffect(() => {
     if (!selectedWord && GERMAN_DICTIONARY['schön']) {
       setSelectedWord(GERMAN_DICTIONARY['schön']);
     }
   }, [selectedWord]);
+
+  // Load 250k stats on mount
+  useEffect(() => {
+    fetch('/api/dictionary?stats=true')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success && d.stats) {
+          setLexiconStats(d.stats);
+          setLexiconTotal(d.stats.totalWords);
+        }
+      })
+      .catch((err) => console.error('Failed to load lexicon stats:', err));
+  }, []);
+
+  // Fetch paginated words from the 250k database
+  useEffect(() => {
+    if (catalogMode === 'lexicon250k') {
+      setIsFetchingLexicon(true);
+      const timer = setTimeout(() => {
+        fetch(
+          `/api/dictionary?q=${encodeURIComponent(searchTerm)}&level=${filterLevel}&page=${lexiconPage}&limit=30`
+        )
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.success) {
+              setLexiconResults(data.results || []);
+              setLexiconTotal(data.total || 0);
+              setLexiconTotalPages(data.totalPages || 1);
+            }
+          })
+          .catch((err) => console.error('Lexicon query error:', err))
+          .finally(() => setIsFetchingLexicon(false));
+      }, 180);
+
+      return () => clearTimeout(timer);
+    }
+  }, [catalogMode, searchTerm, filterLevel, lexiconPage]);
+
+  // Reset to page 1 on filter or search term change
+  useEffect(() => {
+    setLexiconPage(1);
+  }, [searchTerm, filterLevel]);
 
   const handleSearchWord = async (wordToSearch: string) => {
     const trimmed = wordToSearch.trim();
@@ -219,6 +270,31 @@ export default function DictionaryPage() {
     }
   };
 
+  const handleSelectLexiconWord = async (item: any) => {
+    const clean = item.word.toLowerCase();
+    if (GERMAN_DICTIONARY[clean]) {
+      setSelectedWord(GERMAN_DICTIONARY[clean]);
+      setError(null);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/dictionary?lookup=${encodeURIComponent(item.word)}`);
+      const data = await res.json();
+      if (data.success && data.wordResult) {
+        setSelectedWord(data.wordResult);
+      } else {
+        handleSearchWord(item.word);
+      }
+    } catch {
+      handleSearchWord(item.word);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleInsertChar = (char: string) => {
     setSearchTerm((prev) => prev + char);
   };
@@ -253,19 +329,65 @@ export default function DictionaryPage() {
     <div>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <h1
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <h1
+            style={{
+              fontSize: '2.2rem',
+              fontWeight: 800,
+              letterSpacing: '-0.5px',
+              color: 'var(--text-primary)',
+              margin: 0,
+            }}
+          >
+            Wörterbuch (Kamus Bahasa Jerman)
+          </h1>
+          <span
+            style={{
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              color: '#ffffff',
+              padding: '4px 12px',
+              borderRadius: 20,
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              letterSpacing: '0.3px',
+              boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
+            }}
+          >
+            250.533+ Kosakata Aktif
+          </span>
+        </div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', marginTop: 6, marginBottom: 12 }}>
+          Database kamus komprehensif dari level A1 hingga C2 & Native Speaker dengan artikel, konjugasi, dan contoh penggunaan.
+        </p>
+
+        {/* Level Stats Bar */}
+        <div
           style={{
-            fontSize: '2.2rem',
-            fontWeight: 800,
-            letterSpacing: '-0.5px',
-            color: 'var(--text-primary)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            flexWrap: 'wrap',
+            padding: '8px 14px',
+            background: 'var(--bg-surface-elevated)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: '0.8rem',
+            color: 'var(--text-secondary)',
           }}
         >
-          Wörterbuch (Kamus Bahasa Jerman)
-        </h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', marginTop: 4 }}>
-          Cari kosakata lengkap dengan artikel, konjugasi, deklinasi, dan contoh penggunaan.
-        </p>
+          <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>📊 Cakupan Level:</span>
+          <span>A1 (5.064 kata)</span>
+          <span>•</span>
+          <span>A2 (10.029 kata)</span>
+          <span>•</span>
+          <span>B1 (22.543 kata)</span>
+          <span>•</span>
+          <span>B2 (50.098 kata)</span>
+          <span>•</span>
+          <span>C1 (75.140 kata)</span>
+          <span>•</span>
+          <span>C2 & Native (87.659 kata)</span>
+        </div>
       </div>
 
       {/* Search Bar & Umlauts */}
@@ -605,6 +727,58 @@ export default function DictionaryPage() {
             </div>
           </div>
 
+          {/* Mode Switcher Tabs */}
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              marginBottom: 14,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setCatalogMode('lexicon250k')}
+              style={{
+                flex: 1,
+                padding: '8px 10px',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                border: 'none',
+                cursor: 'pointer',
+                background:
+                  catalogMode === 'lexicon250k'
+                    ? 'var(--accent-primary)'
+                    : 'var(--bg-surface-elevated)',
+                color: catalogMode === 'lexicon250k' ? '#ffffff' : 'var(--text-secondary)',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              📚 250.000+ Kosakata ({lexiconTotal.toLocaleString()})
+            </button>
+            <button
+              type="button"
+              onClick={() => setCatalogMode('curated')}
+              style={{
+                flex: 1,
+                padding: '8px 10px',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                border: 'none',
+                cursor: 'pointer',
+                background:
+                  catalogMode === 'curated'
+                    ? 'var(--accent-primary)'
+                    : 'var(--bg-surface-elevated)',
+                color: catalogMode === 'curated' ? '#ffffff' : 'var(--text-secondary)',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              ⭐ Inti & Idiom ({dictionaryEntries.length})
+            </button>
+          </div>
+
           {/* Word Scroll List */}
           <div
             style={{
@@ -616,7 +790,87 @@ export default function DictionaryPage() {
               paddingRight: 4,
             }}
           >
-            {dictionaryEntries.length === 0 ? (
+            {catalogMode === 'lexicon250k' ? (
+              isFetchingLexicon ? (
+                <div style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-muted)' }}>
+                  Memuat data dari 250.000+ kosakata...
+                </div>
+              ) : lexiconResults.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-muted)' }}>
+                  Tidak ada kata yang cocok dalam 250.000+ database.
+                </div>
+              ) : (
+                lexiconResults.map((item, idx) => {
+                  const isSelected = selectedWord?.word === item.word;
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => handleSelectLexiconWord(item)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 12px',
+                        borderRadius: 'var(--radius-sm)',
+                        background: isSelected
+                          ? 'var(--accent-glow)'
+                          : 'var(--bg-surface-elevated)',
+                        border: `1px solid ${
+                          isSelected ? 'var(--accent-primary)' : 'var(--border-subtle)'
+                        }`,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span
+                            style={{
+                              fontWeight: 700,
+                              fontSize: '0.95rem',
+                              color: isSelected
+                                ? 'var(--accent-primary)'
+                                : 'var(--text-primary)',
+                            }}
+                          >
+                            {item.displayWord || item.word}
+                          </span>
+                          {item.level && (
+                            <span
+                              className={`badge badge-cefr badge-cefr-${item.level}`}
+                              style={{ fontSize: '0.65rem', padding: '1px 5px' }}
+                            >
+                              {item.level}
+                            </span>
+                          )}
+                          <span
+                            style={{
+                              fontSize: '0.68rem',
+                              color: 'var(--text-muted)',
+                              background: 'rgba(255,255,255,0.06)',
+                              padding: '1px 5px',
+                              borderRadius: 4,
+                            }}
+                          >
+                            {item.wordClass}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '0.78rem',
+                            color: 'var(--text-secondary)',
+                            marginTop: 2,
+                          }}
+                        >
+                          {item.translation}
+                        </div>
+                      </div>
+                      <AudioButton text={item.word} size="sm" />
+                    </div>
+                  );
+                })
+              )
+            ) : dictionaryEntries.length === 0 ? (
               <div
                 style={{
                   textAlign: 'center',
@@ -630,7 +884,6 @@ export default function DictionaryPage() {
             ) : (
               dictionaryEntries.map((w, idx) => {
                 const isSelected = selectedWord?.word === w.word;
-                const art = w.grammar.type === 'nomen' ? w.grammar.data.artikel : undefined;
 
                 return (
                   <div
@@ -693,6 +946,43 @@ export default function DictionaryPage() {
               })
             )}
           </div>
+
+          {/* Pagination for 250k mode */}
+          {catalogMode === 'lexicon250k' && lexiconTotalPages > 1 && (
+            <div
+              style={{
+                marginTop: 12,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingTop: 10,
+                borderTop: '1px solid var(--border-subtle)',
+                fontSize: '0.78rem',
+              }}
+            >
+              <button
+                type="button"
+                disabled={lexiconPage <= 1}
+                onClick={() => setLexiconPage((p) => Math.max(1, p - 1))}
+                className="btn btn-ghost"
+                style={{ padding: '4px 10px', fontSize: '0.75rem', borderRadius: 4 }}
+              >
+                ← Sebelumnya
+              </button>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>
+                Halaman {lexiconPage.toLocaleString()} dari {lexiconTotalPages.toLocaleString()}
+              </span>
+              <button
+                type="button"
+                disabled={lexiconPage >= lexiconTotalPages}
+                onClick={() => setLexiconPage((p) => Math.min(lexiconTotalPages, p + 1))}
+                className="btn btn-ghost"
+                style={{ padding: '4px 10px', fontSize: '0.75rem', borderRadius: 4 }}
+              >
+                Berikutnya →
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Right Column: Detailed Word Card */}

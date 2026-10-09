@@ -26,6 +26,7 @@ import {
 } from './germanDictionaryData';
 import { detectWordUmlauts, detectSentenceUmlauts } from './umlautDetector';
 import { detectInflectedGermanForm, detectGermanTypo } from './inflectionDetector';
+import { largeLexiconService } from './largeLexiconService';
 
 /**
  * System prompt instructing the LLM to act as a strict, pedagogical German tutor
@@ -980,6 +981,23 @@ async function fallbackLinguisticEngine(
       }
     }
 
+    // 2.4.b Check 250k Lexicon database
+    const lexiconMatch = largeLexiconService.lookupWord(cleanWord) || largeLexiconService.lookupWord(lower);
+    if (lexiconMatch) {
+      const generated = largeLexiconService.toWordResult(lexiconMatch);
+      return {
+        input,
+        mode,
+        inputType: 'word',
+        recommendations,
+        wordResult: {
+          ...generated,
+          inflectionInfo: detectedInflection || undefined,
+          typoCorrection: detectedTypo || undefined,
+        },
+      };
+    }
+
     // 2.5. Heuristic + online translation for unknown German word
     return await generateGermanWordFallback(input, recommendations, detectedInflection, detectedTypo);
   } else {
@@ -1245,6 +1263,12 @@ function detectGermanCEFRLevel(word: string, wordClass: WordClass): CEFRLevel {
   }
   if (GERMAN_DICTIONARY[l]?.cefrLevel) {
     return GERMAN_DICTIONARY[l].cefrLevel!;
+  }
+
+  // 1.b Check 250k Lexicon database
+  const lexiconEntry = largeLexiconService.lookupWord(l);
+  if (lexiconEntry?.level && lexiconEntry.level !== 'Level tidak pasti') {
+    return lexiconEntry.level;
   }
 
   // 2. C2 criteria (literary, nuanced, academic, highly specialized native idioms)
