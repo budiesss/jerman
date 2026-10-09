@@ -1100,10 +1100,162 @@ function smartDistance(input: string, candidate: string): number {
 }
 
 /**
- * 300+ curated German typo pairs covering the most common mistakes
- * made by Indonesian/English speakers learning German
+ * 500+ curated German typo pairs covering the most common mistakes
+ * made by Indonesian/English speakers learning German.
+ * Also includes PREFIX-DELETION typos (missing first letter(s)).
  */
 const COMMON_TYPOS: Record<string, { target: string; reason: string }> = {
+  // === PREFIX-DELETION (huruf awal hilang — sangat umum saat mengetik cepat) ===
+  // haben → aben (h dihilangkan)
+  aben: { target: 'haben', reason: 'Huruf pertama "h" hilang pada kata kerja "haben" (memiliki/mempunyai).' },
+  aben2: { target: 'haben', reason: 'Kurang huruf pertama "h" pada "haben".' },
+  // gehen → ehen
+  ehen: { target: 'gehen', reason: 'Huruf pertama "g" hilang pada kata kerja "gehen" (pergi).' },
+  // kommen → ommen
+  ommen: { target: 'kommen', reason: 'Huruf pertama "k" hilang pada "kommen" (datang).' },
+  // machen → achen
+  achen: { target: 'machen', reason: 'Huruf pertama "m" hilang pada "machen" (melakukan/membuat).' },
+  // sehen → ehen (ganda, sehen lebih prioritas dari gehen jika 'ehen')
+  // fahren → ahren
+  ahren: { target: 'fahren', reason: 'Huruf pertama "f" hilang pada "fahren" (berkendara/pergi).' },
+  // kaufen → aufen
+  aufen: { target: 'kaufen', reason: 'Huruf pertama "k" hilang pada "kaufen" (membeli).' },
+  // suchen → uchen
+  uchen: { target: 'suchen', reason: 'Huruf pertama "s" hilang pada "suchen" (mencari).' },
+  // lesen → esen
+  esen: { target: 'lesen', reason: 'Huruf pertama "l" hilang pada "lesen" (membaca).' },
+  // finden → inden
+  inden: { target: 'finden', reason: 'Huruf pertama "f" hilang pada "finden" (menemukan).' },
+  // leben → eben
+  eben: { target: 'leben', reason: 'Huruf pertama "l" hilang pada "leben" (hidup/tinggal).' },
+  // geben → eben (konflik dengan leben, prioritas berdasarkan kamus)
+  // schreiben → chreiben/hreiben
+  chreiben: { target: 'schreiben', reason: 'Kurang huruf "s" di awal kluster "sch" pada "schreiben" (menulis).' },
+  hreiben: { target: 'schreiben', reason: 'Kurang "sc" di awal pada "schreiben" (menulis).' },
+  // sprechen → prechen
+  prechen: { target: 'sprechen', reason: 'Kurang huruf "s" di awal pada "sprechen" (berbicara).' },
+  // stehen → tehen
+  tehen: { target: 'stehen', reason: 'Huruf pertama "s" hilang pada "stehen" (berdiri/ada).' },
+  // trinken → rinken
+  rinken: { target: 'trinken', reason: 'Huruf pertama "t" hilang pada "trinken" (minum).' },
+  // spielen → pielen
+  pielen: { target: 'spielen', reason: 'Huruf pertama "s" hilang pada "spielen" (bermain).' },
+  // wohnen → ohnen
+  ohnen: { target: 'wohnen', reason: 'Huruf pertama "w" hilang pada "wohnen" (tinggal/berdomisili).' },
+  // helfen → elfen
+  elfen: { target: 'helfen', reason: 'Huruf pertama "h" hilang pada "helfen" (membantu).' },
+  // denken → enken
+  enken: { target: 'denken', reason: 'Huruf pertama "d" hilang pada "denken" (berpikir).' },
+  // kennen → ennen
+  ennen: { target: 'kennen', reason: 'Huruf pertama "k" hilang pada "kennen" (mengenal).' },
+  // lernen → ernen
+  ernen: { target: 'lernen', reason: 'Huruf pertama "l" hilang pada "lernen" (belajar).' },
+  // bringen → ringen
+  ringen: { target: 'bringen', reason: 'Huruf pertama "b" hilang pada "bringen" (membawa).' },
+  // nehmen → ehmen
+  ehmen: { target: 'nehmen', reason: 'Huruf pertama "n" hilang pada "nehmen" (mengambil).' },
+  // geben → eben (kata kerja)
+  // schlafen → chlafen/hlafen
+  chlafen: { target: 'schlafen', reason: 'Kurang huruf "s" pada kluster "sch" di "schlafen" (tidur).' },
+  // Nomen: Tisch → isch
+  isch: { target: 'Tisch', reason: 'Huruf pertama "T" hilang pada "Tisch" (meja).' },
+  // Stuhl → tuhl
+  tuhl: { target: 'Stuhl', reason: 'Huruf pertama "S" hilang pada "Stuhl" (kursi).' },
+  // Buch → uch
+  uch: { target: 'Buch', reason: 'Huruf pertama "B" hilang pada "Buch" (buku).' },
+  // Haus → aus
+  aus: { target: 'aus', reason: 'Kata "aus" (dari/keluar) — jika maksud Anda "Haus" (rumah), kurang huruf "H".' },
+  // Hund → und
+  // Kind → ind
+  ind: { target: 'Kind', reason: 'Huruf pertama "K" hilang pada "Kind" (anak).' },
+  // Stadt → tadt
+  tadt: { target: 'Stadt', reason: 'Huruf pertama "S" hilang pada "Stadt" (kota).' },
+  // Land → and
+  and: { target: 'Land', reason: 'Huruf pertama "L" hilang pada "Land" (negara/daerah).' },
+  // Wort → ort
+  ort: { target: 'Wort', reason: 'Bisa jadi huruf "W" hilang pada "Wort" (kata) — atau "Ort" (tempat).' },
+  // Zeit → eit
+  eit: { target: 'Zeit', reason: 'Huruf pertama "Z" hilang pada "Zeit" (waktu).' },
+  // Geld → eld
+  eld: { target: 'Geld', reason: 'Huruf pertama "G" hilang pada "Geld" (uang).' },
+  // Mann → ann
+  ann: { target: 'Mann', reason: 'Huruf pertama "M" hilang pada "Mann" (laki-laki/pria).' },
+  // Frau → rau
+  rau: { target: 'Frau', reason: 'Huruf pertama "F" hilang pada "Frau" (perempuan/wanita).' },
+  // Schule → chule
+  chule: { target: 'Schule', reason: 'Kurang "s" pada kluster "sch" di "Schule" (sekolah).' },
+  // Arbeit → rbeit
+  rbeit: { target: 'Arbeit', reason: 'Huruf pertama "A" hilang pada "Arbeit" (pekerjaan).' },
+  // Wasser → asser
+  asser: { target: 'Wasser', reason: 'Huruf pertama "W" hilang pada "Wasser" (air).' },
+  // Brot → rot
+  rot: { target: 'Brot', reason: 'Bisa jadi huruf "B" hilang pada "Brot" (roti) — atau "rot" (merah).' },
+  // Milch → ilch
+  ilch: { target: 'Milch', reason: 'Huruf pertama "M" hilang pada "Milch" (susu).' },
+  // Fleisch → leisch
+  leisch: { target: 'Fleisch', reason: 'Huruf pertama "F" hilang pada "Fleisch" (daging).' },
+  // Zimmer → immer (konflik dengan 'immer' adverb)
+  // Fenster → enster
+  enster: { target: 'Fenster', reason: 'Huruf pertama "F" hilang pada "Fenster" (jendela).' },
+  // Küche → üche
+  üche: { target: 'Küche', reason: 'Huruf pertama "K" hilang pada "Küche" (dapur).' },
+  // Garten → arten
+  arten: { target: 'Garten', reason: 'Huruf pertama "G" hilang pada "Garten" (taman/kebun).' },
+  // Vater → ater
+  ater: { target: 'Vater', reason: 'Huruf pertama "V" hilang pada "Vater" (ayah).' },
+  // Mutter → utter
+  utter: { target: 'Mutter', reason: 'Huruf pertama "M" hilang pada "Mutter" (ibu).' },
+  // Bruder → ruder
+  ruder: { target: 'Bruder', reason: 'Huruf pertama "B" hilang pada "Bruder" (kakak/adik laki-laki).' },
+  // Schwester → chwester
+  chwester: { target: 'Schwester', reason: 'Kurang "S" awal pada "Schwester" (saudara perempuan).' },
+  // Freund → reund
+  reund: { target: 'Freund', reason: 'Huruf pertama "F" hilang pada "Freund" (teman/pacar laki-laki).' },
+  // Freundin → reundin
+  reundin: { target: 'Freundin', reason: 'Huruf pertama "F" hilang pada "Freundin" (teman/pacar perempuan).' },
+  // Lehrer → ehrer
+  ehrer: { target: 'Lehrer', reason: 'Huruf pertama "L" hilang pada "Lehrer" (guru).' },
+  // Schüler → chüler
+  chüler: { target: 'Schüler', reason: 'Kurang "s" pada kluster "sch" di "Schüler" (murid).' },
+  // Krankenhaus → rankenhaus
+  rankenhaus: { target: 'Krankenhaus', reason: 'Huruf pertama "K" hilang pada "Krankenhaus" (rumah sakit).' },
+  // Universität → niversität
+  niversitat: { target: 'Universität', reason: 'Huruf pertama "U" hilang pada "Universität" (universitas).' },
+  // Bahnhof → ahnhof
+  ahnhof: { target: 'Bahnhof', reason: 'Huruf pertama "B" hilang pada "Bahnhof" (stasiun kereta).' },
+  // Flughafen → lughafen
+  lughafen: { target: 'Flughafen', reason: 'Huruf pertama "F" hilang pada "Flughafen" (bandara).' },
+  // Supermarkt → upermarkt
+  upermarkt: { target: 'Supermarkt', reason: 'Huruf pertama "S" hilang pada "Supermarkt" (supermarket).' },
+  // Deutschland → eutschland
+  eutschland: { target: 'Deutschland', reason: 'Huruf pertama "D" hilang pada "Deutschland" (Jerman).' },
+  // heißen → eißen
+  eißen: { target: 'heißen', reason: 'Huruf pertama "h" hilang pada "heißen" (bernama).' },
+  // wissen → issen
+  issen: { target: 'wissen', reason: 'Huruf pertama "w" hilang pada "wissen" (mengetahui).' },
+  // lachen → achen (konflik machen, kedua sama-sama valid)
+  // essen → ssen
+  ssen: { target: 'essen', reason: 'Huruf pertama "e" hilang pada "essen" (makan).' },
+  // möchten → öchten
+  öchten: { target: 'möchten', reason: 'Huruf pertama "m" hilang pada "möchten" (ingin).' },
+  // können → önnen
+  önnen: { target: 'können', reason: 'Huruf pertama "k" hilang pada "können" (bisa).' },
+  // müssen → üssen
+  üssen: { target: 'müssen', reason: 'Huruf pertama "m" hilang pada "müssen" (harus).' },
+  // dürfen → ürfen
+  ürfen: { target: 'dürfen', reason: 'Huruf pertama "d" hilang pada "dürfen" (boleh).' },
+  // sollen → ollen
+  ollen: { target: 'sollen', reason: 'Huruf pertama "s" hilang pada "sollen" (seharusnya).' },
+  // wollen → ollen (konflik sollen)
+  // beginnen → eginnen
+  eginnen: { target: 'beginnen', reason: 'Huruf pertama "b" hilang pada "beginnen" (memulai).' },
+  // vergessen → ergessen
+  ergessen: { target: 'vergessen', reason: 'Huruf pertama "v" hilang pada "vergessen" (lupa).' },
+  // verstehen → erstehen
+  erstehen: { target: 'verstehen', reason: 'Huruf pertama "v" hilang pada "verstehen" (memahami).' },
+  // brauchen → rauchen
+  rauchen: { target: 'brauchen', reason: 'Huruf pertama "b" hilang pada "brauchen" (membutuhkan) — "rauchen" artinya merokok.' },
+  // schreiben sudah di atas
   // === FREIZEIT & ALLTAG ===
   freziet: { target: 'Freizeit', reason: 'Tertukar susunan huruf "ei" dan "ie" pada "Freizeit" (waktu luang).' },
   frieziet: { target: 'Freizeit', reason: 'Kesalahan ejaan pada "Freizeit".' },
@@ -1256,8 +1408,6 @@ const COMMON_TYPOS: Record<string, { target: string; reason: string }> = {
   lessen2: { target: 'lesen', reason: 'Angka tidak relevan.' },
   trinken: { target: 'trinken', reason: 'Sudah benar — kata kerja "trinken" (minum).' },
   trinkken: { target: 'trinken', reason: 'Kelebihan konsonan "k" ganda pada "trinken".' },
-  essen: { target: 'essen', reason: 'Sudah benar — kata kerja "essen" (makan).' },
-  esen: { target: 'essen', reason: 'Kurang konsonan "s" ganda pada kata kerja "essen".' },
   kaufen: { target: 'kaufen', reason: 'Sudah benar — kata kerja "kaufen" (membeli).' },
   kauven: { target: 'kaufen', reason: 'Tertukar konsonan "v" dan "f" — dalam bahasa Jerman menggunakan "f".' },
   wohnen: { target: 'wohnen', reason: 'Sudah benar — kata kerja "wohnen" (tinggal/berdomisili).' },
@@ -1382,7 +1532,7 @@ const COMMON_TYPOS: Record<string, { target: string; reason: string }> = {
 
   // === FARBEN ===
   gelb: { target: 'gelb', reason: 'Sudah benar — "gelb" (kuning).' },
-  rot: { target: 'rot', reason: 'Sudah benar — "rot" (merah).' },
+  roten: { target: 'rot', reason: 'Deklinasi kata sifat — bentuk dasar kata sifat "rot" (merah).' },
   blau: { target: 'blau', reason: 'Sudah benar — "blau" (biru).' },
   gruen: { target: 'grün', reason: 'Transliterasi "ue"→"ü" pada "grün" (hijau).' },
   grun: { target: 'grün', reason: 'Kurang Umlaut "ü" pada "grün".' },
@@ -1557,6 +1707,41 @@ export function detectGermanTypo(rawInput: string): TypoCorrection | null {
     return buildResult(best.word, best.reason, best.score);
   }
 
+  // ── Layer 2.5: Prefix-deletion detection ──
+  // If user typed a word missing its first 1-2 letters, detect it here.
+  // E.g. "aben" → "haben", "ehen" → "gehen", "ommen" → "kommen"
+  const prefixCandidates: Array<{ key: string; word: string; score: number; reason: string; translations: string[] }> = [];
+  if (lower.length >= 3) {
+    for (const [dictKey, dictEntry] of Object.entries(GERMAN_DICTIONARY)) {
+      // Skip if the dict word is not longer than the input (deletion only makes it shorter)
+      if (dictKey.length <= lower.length) continue;
+      const deletedChars = dictKey.length - lower.length;
+      // Only consider 1 or 2 prefix deletions
+      if (deletedChars > 2) continue;
+      // Check if input matches the suffix of dictKey
+      const dictSuffix = dictKey.slice(deletedChars);
+      if (dictSuffix === lower) {
+        const missingPrefix = dictKey.slice(0, deletedChars);
+        prefixCandidates.push({
+          key: dictKey,
+          word: dictEntry.word,
+          score: deletedChars === 1 ? 0.88 : 0.80,
+          reason: `Huruf pertama "${missingPrefix.toUpperCase()}" mungkin terlewat saat mengetik "${dictEntry.word}" (${(dictEntry.translations || []).slice(0, 2).join(', ')}).`,
+          translations: dictEntry.translations || [],
+        });
+      }
+    }
+  }
+
+  if (prefixCandidates.length > 0) {
+    // Prefer the one with highest score, then shortest dictKey (most common words tend to be shorter)
+    const bestPrefix = prefixCandidates.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.key.length - b.key.length;
+    })[0];
+    return buildResult(bestPrefix.word, bestPrefix.reason, bestPrefix.score);
+  }
+
   // ── Layer 3: Adaptive fuzzy Levenshtein across dictionary ──
   // Adaptive threshold: shorter words get stricter tolerance
   const getMaxDist = (len: number): number => {
@@ -1593,9 +1778,12 @@ export function detectGermanTypo(rawInput: string): TypoCorrection | null {
       };
       const allowed = confusable[firstChar] || [];
       if (!allowed.includes(dictFirstChar) && dictFirstChar !== firstChar) {
-        // Skip unless length ratio is also suspicious
-        if (Math.abs(dictKey.length - lower.length) > 1) continue;
-        // Still skip if first chars are very different
+        // If the length difference is exactly 1 (suggests a single insertion at start/end),
+        // allow the fuzzy match even across different first letters — prefix deletions
+        // that survived up to this point get one more chance here
+        const lenDiff2 = Math.abs(dictKey.length - lower.length);
+        if (lenDiff2 !== 1) continue;
+        // Still skip if first chars are very different AND no length hint
         if (damerauLevenshteinDistance(firstChar, dictFirstChar) > 1) continue;
       }
     }
